@@ -30,6 +30,7 @@ It also provides automatic destruction of non-deallocated objects.
 # pragma option push -w-inl
 #endif
 
+//虽然很有道理，但是我的评价是最好都加上
 // There are a few places in this file where the expression "this->m" is used.
 // This expression is used to force instantiation-time name lookup, which I am
 //   informed is required for strict Standard compliance.  It's only necessary
@@ -98,10 +99,12 @@ class object_pool: protected pool<UserAllocator>
   public:
     explicit object_pool(const size_type arg_next_size = 32, const size_type arg_max_size = 0)
     :
+    //此处指定了requested_size
     pool<UserAllocator>(sizeof(T), arg_next_size, arg_max_size)
     { //! Constructs a new (empty by default) ObjectPool.
       //! \param next_size Number of chunks to request from the system the next time that object needs to allocate system memory (default 32).
       //! \pre next_size != 0.
+      //max_size的作用存疑
       //! \param max_size Maximum number of chunks to ever request from the system - this puts a cap on the doubling algorithm
       //! used by the underlying pool.
     }
@@ -146,6 +149,8 @@ class object_pool: protected pool<UserAllocator>
       element_type * const ret = (malloc)();
       if (ret == 0)
         return ret;
+      //如果placement new抛出异常，就调用free释放内存
+      //注意到此处malloc和free都加了括号，可以防止宏替换，从而调用上面的成员函数
       try { new (ret) element_type(); }
       catch (...) { (free)(ret); throw; }
       return ret;
@@ -187,7 +192,8 @@ class object_pool: protected pool<UserAllocator>
 // But if moved this up, Doxygen is happy, but of course it won't compile,
 // because the many constructors *must* go here.
 
-#ifndef BOOST_NO_TEMPLATE_CV_REF_OVERLOADS
+#ifndef BOOST_NO_TEMPLATE_CV_REF_OVERLOADS               
+//模板是在预编译期处理的，不能放在.cpp文件中,boost使用了.ipp来存放具体的实现代码
 #   include <boost/pool/detail/pool_construct.ipp>
 #else
 #   include <boost/pool/detail/pool_construct_simple.ipp>
@@ -216,6 +222,7 @@ class object_pool: protected pool<UserAllocator>
     }
 };
 
+//负责析构已构造的对象
 template <typename T, typename UserAllocator>
 object_pool<T, UserAllocator>::~object_pool()
 {
@@ -238,7 +245,8 @@ object_pool<T, UserAllocator>::~object_pool()
     next = next.next();
 
     // delete all contained objects that aren't freed.
-
+ 
+    //析构所有对象
     // Iterate 'i' through all chunks in the memory block.
     for (char * i = iter.begin(); i != iter.end(); i += partition_size)
     {
@@ -257,6 +265,7 @@ object_pool<T, UserAllocator>::~object_pool()
       // and continue searching chunks in the memory block.
     }
 
+    //释放block的内存
     // free storage.
     (UserAllocator::free)(iter.begin());
 
@@ -266,6 +275,7 @@ object_pool<T, UserAllocator>::~object_pool()
 
   // Make the block list empty so that the inherited destructor doesn't try to
   // free it again.
+  //上面已经释放了block的内存，所以~pool不再释放
   this->list.invalidate();
 #else
    // destruct all used elements:

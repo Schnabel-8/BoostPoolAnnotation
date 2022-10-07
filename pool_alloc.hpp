@@ -10,6 +10,7 @@
 #ifndef BOOST_POOL_ALLOC_HPP
 #define BOOST_POOL_ALLOC_HPP
 
+//一个符合stl标准的Allocator
 /*!
   \file
   \brief C++ Standard Library compatible pool-based allocators.
@@ -144,6 +145,10 @@ unsigned debug_info<b>::allocated = 0;
  
   
   */
+
+
+  //使用的是singleton，所以main()结束后并不会马上释放
+  //如果检测内存泄漏可能报错
 template <typename T,
     typename UserAllocator,
     typename Mutex,
@@ -177,6 +182,7 @@ class pool_allocator
     };
 
   public:
+    //保证pool_allocator在初始化的时候也能初始化底层的singleton_pool
     pool_allocator()
     { /*! Results in default construction of the underlying singleton_pool IFF an
        instance of this allocator is constructed during global initialization (

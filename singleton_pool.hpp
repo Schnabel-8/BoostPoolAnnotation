@@ -87,6 +87,8 @@ namespace boost {
  
   */
 
+//该类所有的组件都是静态的
+//Tag只是用来区分两个不同的singleton_pool
  template <typename Tag,
     unsigned RequestedSize,
     typename UserAllocator,
@@ -133,6 +135,7 @@ public:
     static void * malloc BOOST_PREVENT_MACRO_SUBSTITUTION()
     { //! Equivalent to SingletonPool::p.malloc(); synchronized.
       pool_type & p = get_pool();
+      //由上面的定义可知，pool_type继承了mutex，所以此处可以把p直接传给g的构造函数
       details::pool::guard<Mutex> g(p);
       return (p.malloc)();
     }
@@ -215,6 +218,8 @@ private:
       return *static_cast<pool_type*>(static_cast<void*>(&storage));
    }
 
+   //由该函数来调用pool_type的构造函数注意到前面已经对pool的构造函数
+   //注意到前面已经对pool的构造函数做了一个包装，非平凡构造函数的参数通过模板参数传递进来
    struct object_creator
    {
       object_creator()
@@ -227,16 +232,20 @@ private:
       {
       }
    };
+
    static object_creator create_object;
 }; // struct singleton_pool
 
+
+//调用这两个类的default构造函数
 template <typename Tag,
     unsigned RequestedSize,
     typename UserAllocator,
     typename Mutex,
     unsigned NextSize,
     unsigned MaxSize >
-typename singleton_pool<Tag, RequestedSize, UserAllocator, Mutex, NextSize, MaxSize>::storage_type singleton_pool<Tag, RequestedSize, UserAllocator, Mutex, NextSize, MaxSize>::storage;
+typename singleton_pool<Tag, RequestedSize, UserAllocator, Mutex, NextSize, MaxSize>::storage_type 
+singleton_pool<Tag, RequestedSize, UserAllocator, Mutex, NextSize, MaxSize>::storage;
 
 template <typename Tag,
     unsigned RequestedSize,
@@ -244,7 +253,8 @@ template <typename Tag,
     typename Mutex,
     unsigned NextSize,
     unsigned MaxSize >
-typename singleton_pool<Tag, RequestedSize, UserAllocator, Mutex, NextSize, MaxSize>::object_creator singleton_pool<Tag, RequestedSize, UserAllocator, Mutex, NextSize, MaxSize>::create_object;
+typename singleton_pool<Tag, RequestedSize, UserAllocator, Mutex, NextSize, MaxSize>::object_creator 
+singleton_pool<Tag, RequestedSize, UserAllocator, Mutex, NextSize, MaxSize>::create_object;
 
 } // namespace boost
 

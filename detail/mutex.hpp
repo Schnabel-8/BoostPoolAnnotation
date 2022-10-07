@@ -14,15 +14,17 @@
 
 namespace boost{ namespace details{ namespace pool{
 
+//不加锁
 class null_mutex
 {
+//禁止拷贝
 private:
 
     null_mutex(const null_mutex &);
     void operator=(const null_mutex &);
 
 public:
-
+//只用到了这三个接口
     null_mutex() {}
 
     static void lock() {}
@@ -31,6 +33,8 @@ public:
 
 }}} // namespace boost::details::pool
 
+//根据define定义default_mutex
+//
 #if !defined(BOOST_HAS_THREADS) || defined(BOOST_NO_MT) || defined(BOOST_POOL_NO_MT)
 
 namespace boost{ namespace details{ namespace pool{
@@ -39,7 +43,11 @@ typedef null_mutex default_mutex;
 
 }}} // namespace boost::details::pool
 
+
+//适应不同的C++版本
+//如果是C++11以后，直接使用STL的mutex
 #elif !defined(BOOST_NO_CXX11_HDR_MUTEX)
+
 
 #include <mutex>
 
@@ -49,7 +57,12 @@ typedef std::mutex default_mutex;
 
 }}} // namespace boost::details::pool
 
+
+//如果是多线程
+//使用pthread
 #elif defined(BOOST_HAS_PTHREADS)
+
+
 
 #include <boost/assert.hpp>
 #include <pthread.h>
@@ -92,7 +105,13 @@ typedef pt_mutex default_mutex;
 
 }}} // namespace boost::details::pool
 
+
+
+//还可以使用windows_api
 #elif defined(BOOST_HAS_WINTHREADS) || defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__CYGWIN__)
+
+
+
 
 #include <boost/winapi/critical_section.hpp>
 
@@ -136,6 +155,8 @@ typedef cs_mutex default_mutex;
 
 #else
 
+
+//如果都不是就报错
 // Use #define BOOST_DISABLE_THREADS to avoid this error
 #  error Unrecognized threading platform
 

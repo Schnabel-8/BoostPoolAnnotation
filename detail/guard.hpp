@@ -29,6 +29,7 @@ class guard
 	/*! Example:
 	Given a (platform-specific) mutex class, we can wrap code as follows:
 
+    //共享一个锁
 	extern mutex global_lock;
 
 	static void f()
@@ -43,6 +44,8 @@ class guard
 	} // g's destructor unlocks "global_lock"
 	*/
   private:
+    //存的是引用，所以guard和mutex的生命周期不同
+	//这可能就是聚合
     Mutex & mtx;
 
     guard(const guard &); //!< Guards the mutex, ensuring unlocked on destruction, even if exception is thrown.

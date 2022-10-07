@@ -9,6 +9,11 @@
 #ifndef BOOST_SIMPLE_SEGREGATED_STORAGE_HPP
 #define BOOST_SIMPLE_SEGREGATED_STORAGE_HPP
 
+
+//该文件定义了一个simple_segregated_storage类，负责底层的block管理，
+//主要负责管理chunk指针
+
+
 /*!
   \file
   \brief Simple Segregated Storage.
@@ -58,6 +63,11 @@ A member function is <i>order-preserving</i> if the free list maintains its orde
 ordered free list is still ordered after the member function call).
 
 */
+
+//该类是用来管理所有chunk的，pool负责申请block，然后交由该类管理
+//所有的空闲chunk通过指针联系起来
+
+//这个类只有default析构函数
 template <typename SizeType>
 class simple_segregated_storage
 {
@@ -65,6 +75,7 @@ class simple_segregated_storage
     typedef SizeType size_type;
 
   private:
+  //阻止拷贝和赋值
     simple_segregated_storage(const simple_segregated_storage &);
     void operator=(const simple_segregated_storage &);
 
@@ -72,6 +83,7 @@ class simple_segregated_storage
         size_type partition_size);
 
   protected:
+  //链表的头节点
     void * first; /*!< This data member is the free list.
       It points to the first chunk in the free list,
       or is equal to 0 if the free list is empty.
@@ -79,6 +91,7 @@ class simple_segregated_storage
 
     void * find_prev(void * ptr);
 
+    //出现次数很多的操作声明为内联函数
     // for the sake of code readability :)
     static void * & nextof(void * const ptr)
     { //! The return value is just *ptr cast to the appropriate type. ptr must not be 0. (For the sake of code readability :)
@@ -88,6 +101,16 @@ class simple_segregated_storage
     //! and then dereference and assign (*static_cast<void **>(first) = 0;).
     //! This can be done more easily through the use of this convenience function (nextof(first) = 0;).
     //! \returns dereferenced pointer.
+    //解引用的过程可以判断指针是否有效
+    //如果无效，直接抛出segment fault
+
+    //void** 存的是一个void*的地址
+    //对void**解引用可以获得ptr指向的对象
+    //此处ptr存的是一个指针，也就是一个地址
+    //所以返回值隐式转换为为void*没有问题 
+
+    //再次证明C语言是邪教
+
       return *(static_cast<void **>(ptr));
     }
 
@@ -102,6 +125,9 @@ class simple_segregated_storage
     static void * segregate(void * block,
         size_type nsz, size_type npartition_sz,
         void * end = 0);
+    
+    //storage类不知道block的存在，它只负责管理chunks
+    //block的管理由pool中的PODptr链表负责
 
     // Same preconditions as 'segregate'
     // Post: !empty()
@@ -127,6 +153,9 @@ class simple_segregated_storage
       //!  in the proper order.
        BOOST_POOL_VALIDATE_INTERNALS
       // Find where "block" would go in the free list
+
+      //以地址大小为序
+
       void * const loc = find_prev(block);
 
       // Place either at beginning or in middle/end
@@ -143,6 +172,9 @@ class simple_segregated_storage
     { //! \returns true only if simple_segregated_storage is empty.
       return (first == 0);
     }
+
+
+    //BOOST_PREVENT_MACRO_SUBSTITUTION防止malloc被宏替换，有一定道理
 
     void * malloc BOOST_PREVENT_MACRO_SUBSTITUTION()
     { //! Create a chunk.
@@ -167,6 +199,8 @@ class simple_segregated_storage
       BOOST_POOL_VALIDATE_INTERNALS
     }
 
+
+    //按地址大小加到空闲列表中
     void ordered_free(void * const chunk)
     { //! This (slower) implementation of 'free' places the memory
       //!  back in the list in its proper order.
@@ -175,6 +209,7 @@ class simple_segregated_storage
 
       // Find where "chunk" goes in the free list
        BOOST_POOL_VALIDATE_INTERNALS
+
       void * const loc = find_prev(chunk);
 
       // Place either at beginning or in middle/end.
@@ -190,6 +225,9 @@ class simple_segregated_storage
 
    void * malloc_n(size_type n, size_type partition_size);
     
+
+    //归还n个直接当成一个block加进去
+    //此处没有大小检查因为
     //! \pre chunks was previously allocated from *this with the same
     //!   values for n and partition_size.
     //! \post !empty()
@@ -227,6 +265,9 @@ class simple_segregated_storage
        void* ptr = first;
        while(ptr)
        {
+
+        //如果解引用错误直接抛出segment falut
+        //每次调用nextof都可以检查指针的有效性
           void* pt = nextof(ptr); // trigger possible segfault *before* we update variables
           ++index;
           old = ptr;
@@ -242,6 +283,8 @@ class simple_segregated_storage
 //!  Returns 0 if "ptr" would go at the beginning
 //!  of the free list (i.e., before "first").
 
+//返回ptr前面的一个元素
+
 //! \note Note that this function finds the location previous to where ptr would go
 //! if it was in the free list.
 //! It does not find the entry in the free list before ptr
@@ -253,6 +296,9 @@ template <typename SizeType>
 void * simple_segregated_storage<SizeType>::find_prev(void * const ptr)
 { 
   // Handle border case.
+
+  //block为空或者ptr在first前
+
   if (first == 0 || std::greater<void *>()(first, ptr))
     return 0;
 
@@ -266,6 +312,10 @@ void * simple_segregated_storage<SizeType>::find_prev(void * const ptr)
     iter = nextof(iter);
   }
 }
+
+//该函数的作用是将给定的block形按照partition_sz分成若干chunks，并形成链表
+//其中sz是block的字节数
+//partition_sz是每个chunk的字节数
 
 //! Segregate block into chunks.
 //! \pre npartition_sz >= sizeof(void *)
@@ -287,17 +337,29 @@ void * simple_segregated_storage<SizeType>::segregate(
   //  The division followed by the multiplication just makes sure that
   //    old == block + partition_sz * i, for some integer i, even if the
   //    block size (sz) is not a multiple of the partition size.
+
+  //注意到此处说的是“for some integer i”,实际上old的位置比sz小一个partition_sz
+  //猜测指针指的是数据的开头位置
+  //这句代码是为了将block分割为合适的chunk,并且找到最后一个chunk的指针
+
   char * old = static_cast<char *>(block)
       + ((sz - partition_sz) / partition_sz) * partition_sz;
 
   // Set it to point to the end
+  
+  //我们可以看到在add_block中调用segregate的时候end位置上传进来的是first指针，
+  //说明block被加到了链表的前面
+
   nextof(old) = end;
+
+  //如果只有一个元素的位置的话就直接返回
 
   // Handle border case where sz == partition_sz (i.e., we're handling an array
   //  of 1 element)
   if (old == block)
     return block;
 
+  //形成链表
   // Iterate backwards, building a singly-linked list of pointers
   for (char * iter = old - partition_sz; iter != block;
       old = iter, iter -= partition_sz)
@@ -309,11 +371,12 @@ void * simple_segregated_storage<SizeType>::segregate(
   return block;
 }
 
+
 //! \pre (n > 0), (start != 0), (nextof(start) != 0)
 //! \post (start != 0)
 //! The function attempts to find n contiguous chunks
 //!  of size partition_size in the free list, starting at start.
-//! If it succeds, it returns the last chunk in that contiguous
+//! If it succeeds, it returns the last chunk in that contiguous
 //!  sequence, so that the sequence is known by [start, {retval}]
 //! If it fails, it does do either because it's at the end of the
 //!  free list or hits a non-contiguous chunk.  In either case,
@@ -331,9 +394,18 @@ void * simple_segregated_storage<SizeType>::try_malloc_n(
   while (--n != 0)
   {
     void * next = nextof(iter);
+
+    //这个判断用的不错
     if (next != static_cast<char *>(iter) + partition_size)
     {
       // next == 0 (end-of-list) or non-contiguous chunk found
+
+      //分配失败，此时返回0指针并且使start指向遍历到的最后一个指针
+
+      //后续如何处理start?
+      //找到了，start是一个引用，此处被修改，见下个malloc函数，可以帮助退出循环
+      //因为start是一个局部变量，所以不会影响原有内容
+
       start = iter;
       return 0;
     }
@@ -351,9 +423,16 @@ template <typename SizeType>
 void * simple_segregated_storage<SizeType>::malloc_n(const size_type n,
     const size_type partition_size)
 {
+
+   //好习惯！
+   //pool里面没有n==0的检查
    BOOST_POOL_VALIDATE_INTERNALS
   if(n == 0)
     return 0;
+
+  //新版MSVC下不加this->能编译过？
+  //坏习惯:)
+
   void * start = &first;
   void * iter;
   do
@@ -361,8 +440,13 @@ void * simple_segregated_storage<SizeType>::malloc_n(const size_type n,
     if (nextof(start) == 0)
       return 0;
     iter = try_malloc_n(start, n, partition_size);
+   
+
   } while (iter == 0);
   void * const ret = nextof(start);
+
+  //将分配出去的内存从free list中移除
+
   nextof(start) = nextof(iter);
   BOOST_POOL_VALIDATE_INTERNALS
   return ret;

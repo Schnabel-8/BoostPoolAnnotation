@@ -89,6 +89,9 @@
 //! \brief Allocator used as the default template parameter for 
 //! a <a href="boost_pool/pool/pooling.html#boost_pool.pool.pooling.user_allocator">UserAllocator</a>
 //! template parameter.  Uses new and delete.
+
+//两个成员函数声明为静态，不需要实例就可以访问
+
 struct default_user_allocator_new_delete
 {
   typedef std::size_t size_type; //!< An unsigned integral type that can represent the size of the largest object to be allocated.
@@ -96,6 +99,8 @@ struct default_user_allocator_new_delete
 
   static char * malloc BOOST_PREVENT_MACRO_SUBSTITUTION(const size_type bytes)
   { //! Attempts to allocate n bytes from the system. Returns 0 if out-of-memory
+
+  //分配失败时直接返回空指针，不抛出异常。
     return new (std::nothrow) char[bytes];
   }
   static void free BOOST_PREVENT_MACRO_SUBSTITUTION(char * const block)
@@ -121,6 +126,13 @@ struct default_user_allocator_malloc_free
 
 namespace details
 {  //! Implemention only.
+
+
+//注释说PODptr的行为类似于指针，那么它有没有像std::shared_ptr<T>一样提供相应的接口？
+//（虽然该类在details命名空间里，不存在用户使用的可能性）
+//《Effective C++》条款18：让接口容易被正确使用，不易被误用
+
+//PODptr是管理block的指针
 
 template <typename SizeType>
 class PODptr
@@ -154,13 +166,18 @@ The member function valid can be used to test for validity.
     typedef SizeType size_type;
 
   private:
+    //ptr保存block的地址
     char * ptr;
+    //sz保存block的大小
     size_type sz;
 
+    //由于block不是连续存储的，所以每个block都要保存下个block的位置和大小
     char * ptr_next_size() const
     {
       return (ptr + sz - sizeof(size_type));
     }
+
+    //返回下一个block的地址
     char * ptr_next_ptr() const
     {
       return (ptr_next_size() -
@@ -190,6 +207,9 @@ The member function valid can be used to test for validity.
     { //! Make object invalid.
       begin() = 0;
     }
+
+    //PODptr->begin()=ptr，可以修改block的地址
+
     char * & begin()
     { //! Each PODptr keeps the address and size of its memory block.
       //! \returns The address of its memory block.
@@ -200,6 +220,8 @@ The member function valid can be used to test for validity.
       //! \return The address of its memory block.
       return ptr;
     }
+
+
     char * end() const
     { //! \returns begin() plus element_size (a 'past the end' value).
       return ptr_next_ptr();
@@ -211,11 +233,14 @@ The member function valid can be used to test for validity.
       //! \returns size of the memory block.
       return sz;
     }
+    //即section1的大小
     size_type element_size() const
     { //! \returns size of element pointer area.
       return static_cast<size_type>(sz - sizeof(size_type) -
           integer::static_lcm<sizeof(size_type), sizeof(void *)>::value);
     }
+
+
 
     size_type & next_size() const
     { //!
@@ -226,6 +251,8 @@ The member function valid can be used to test for validity.
     {  //! \returns pointer to next pointer area.
       return *(static_cast<char **>(static_cast<void*>(ptr_next_ptr())));
     }
+
+
 
     PODptr next() const
     { //! \returns next PODptr.
@@ -239,6 +266,10 @@ The member function valid can be used to test for validity.
 }; // class PODptr
 } // namespace details
 
+
+//PODptr是details命名空间里的
+
+
 #ifndef BOOST_POOL_VALGRIND
 /*!
   \brief A fast memory allocator that guarantees proper alignment of all allocated chunks.
@@ -248,6 +279,8 @@ The member function valid can be used to test for validity.
   The amount requested is determined using a doubling algorithm;
   that is, each time more system memory is allocated,
   the amount of system memory requested is doubled.
+
+//默认情况下申请两倍的内存
 
   Users may control the doubling algorithm by using the following extensions:
 
@@ -267,6 +300,8 @@ The member function valid can be used to test for validity.
   being allocated, the pool will backtrack just once, halving
   the chunk size and trying again.
 
+//如果两倍内存分配失败，pool会分配正常内存大小再试一次
+
   <b>UserAllocator type</b> - the method that the Pool will use to allocate memory from the system.
 
   There are essentially two ways to use class pool: the client can call \ref malloc() and \ref free() to allocate
@@ -277,6 +312,9 @@ The member function valid can be used to test for validity.
   allocations are performed.
 
 */
+
+
+//这个类析构时负责释放内存
 template <typename UserAllocator>
 class pool: protected simple_segregated_storage < typename UserAllocator::size_type >
 {
@@ -286,18 +324,29 @@ class pool: protected simple_segregated_storage < typename UserAllocator::size_t
     typedef typename UserAllocator::difference_type difference_type;  //!< A signed integral type that can represent the difference of any two pointers.
 
   private:
+
+  //这两个宏定义了两个变量min_alloc_size和min_align
+
     BOOST_STATIC_CONSTANT(size_type, min_alloc_size =
         (::boost::integer::static_lcm<sizeof(void *), sizeof(size_type)>::value) );
     BOOST_STATIC_CONSTANT(size_type, min_align =
         (::boost::integer::static_lcm< ::boost::alignment_of<void *>::value, ::boost::alignment_of<size_type>::value>::value) );
 
+
+    //这两个函数和ordered_malloc(n)的思路一致
     //! \returns 0 if out-of-memory.
     //! Called if malloc/ordered_malloc needs to resize the free list.
     void * malloc_need_resize(); //! Called if malloc needs to resize the free list.
     void * ordered_malloc_need_resize();  //! Called if ordered_malloc needs to resize the free list.
 
   protected:
+
+    //管理block的指针
+
     details::PODptr<size_type> list; //!< List structure holding ordered blocks.
+
+
+    //转换为父类指针
 
     simple_segregated_storage<size_type> & store()
     { //! \returns pointer to store.
@@ -314,6 +363,8 @@ class pool: protected simple_segregated_storage < typename UserAllocator::size_t
 
     //! finds which POD in the list 'chunk' was allocated from.
     details::PODptr<size_type> find_POD(void * const chunk) const;
+
+    //std::less可以进行指针的比较，普通的<运算符有一定局限性
 
     // is_from() tests a chunk to determine if it belongs in a block.
     static bool is_from(void * const chunk, char * const i,
@@ -341,25 +392,41 @@ class pool: protected simple_segregated_storage < typename UserAllocator::size_t
       std::less<void *> lt;
       return (lt_eq(i, chunk) && lt(chunk, i + sizeof_i));
     }
+   
 
+    //计算每个chunk需要分配多大的内存
     size_type alloc_size() const
     { //!  Calculated size of the memory chunks that will be allocated by this Pool.
       //! \returns allocated size.
       // For alignment reasons, this used to be defined to be lcm(requested_size, sizeof(void *), sizeof(size_type)),
       // but is now more parsimonious: just rounding up to the minimum required alignment of our housekeeping data
       // when required.  This works provided all alignments are powers of two.
+
+      //满足分配需求
       size_type s = (std::max)(requested_size, min_alloc_size);
+      //下面满足内存对齐的需求
+
+      //计算是否为min_align的整数倍
       size_type rem = s % min_align;
+      //如果不是，则需要padding，padding的大小为min_align-rem
+      //设s=min_align*n+rem，那么s+min_algn-rem刚好是min_align*(n+1)
       if(rem)
          s += min_align - rem;
       BOOST_ASSERT(s >= min_alloc_size);
       BOOST_ASSERT(s % min_align == 0);
+      //返回的是一个chunk的大小
       return s;
     }
 
     size_type max_chunks() const
     { //! Calculated maximum number of memory chunks that can be allocated in a single call by this Pool.
+
+      //POD_size是管理block所需要的内存,即section2和section3
+
       size_type POD_size = integer::static_lcm<sizeof(size_type), sizeof(void *)>::value + sizeof(size_type);
+
+      //section1是实际可以分配的内存
+      //size_type最多可管理的chunk数
       return (std::numeric_limits<size_type>::max() - POD_size) / alloc_size();
     }
 
@@ -370,6 +437,9 @@ class pool: protected simple_segregated_storage < typename UserAllocator::size_t
     }
 
   public:
+    //nnext_size是第一次分配内存时向系统申请的chunk数量,赋给start_size
+    //nmax_size是每个block最大的chunk容量
+
     // pre: npartition_size != 0 && nnext_size != 0
     explicit pool(const size_type nrequested_size,
         const size_type nnext_size = 32,
@@ -401,6 +471,8 @@ class pool: protected simple_segregated_storage < typename UserAllocator::size_t
     //  Returns true if memory was actually deallocated
     bool purge_memory();
 
+
+    //下一次从系统申请内存的大小
     size_type get_next_size() const
     { //! Number of chunks to request from the system the next time that object needs to allocate system memory. This value should never be 0.
       //! \returns next_size;
@@ -409,6 +481,9 @@ class pool: protected simple_segregated_storage < typename UserAllocator::size_t
     void set_next_size(const size_type nnext_size)
     { //! Set number of chunks to request from the system the next time that object needs to allocate system memory. This value should never be set to 0.
       BOOST_USING_STD_MIN();
+
+      //取min是为了防止申请的内存超出一个block,由此推断，每次申请可能都会新建一个block
+
       next_size = start_size = min BOOST_PREVENT_MACRO_SUBSTITUTION(nnext_size, max_chunks());
     }
     size_type get_max_size() const
@@ -426,6 +501,9 @@ class pool: protected simple_segregated_storage < typename UserAllocator::size_t
       return requested_size;
     }
 
+    //该函数用于分配一个chunk
+    //如果目前的chunk还够用，直接分配，直接分配的函数是inline的
+    //如果不够，就调用malloc_need_resize()
     // Both malloc and ordered_malloc do a quick inlined check first for any
     //  free chunks.  Only if we need to get another memory block do we call
     //  the non-inlined *_need_resize() functions.
@@ -481,6 +559,9 @@ class pool: protected simple_segregated_storage < typename UserAllocator::size_t
       //! chunk must have been previously returned by t.malloc() or t.ordered_malloc().
       store().ordered_free(chunk);
     }
+    
+    //此处chunk必须是之前连续分配的n个chunk
+    //如果我之前申请了10个，现在只想还5个怎么搞？
 
     // pre: 'chunk' must have been previously
     //        returned by *this.malloc(n).
@@ -798,36 +879,57 @@ void * pool<UserAllocator>::ordered_malloc_need_resize()
   return (store().malloc)();
 }
 
+//分配连续的n块chunk
+
 template <typename UserAllocator>
 void * pool<UserAllocator>::ordered_malloc(const size_type n)
 { //! Gets address of a chunk n, allocating new memory if not already available.
   //! \returns Address of chunk n if allocated ok.
   //! \returns 0 if not enough memory for n chunks.
+
+  //大小检查在分配的时候，归还的时候没有这个检查
+
   if (n > max_chunks())
     return 0;
+  
+  //alloc_size是分配给每个chunk的容量
+  //requested_size是每个对象的大小
+  //也就是说某个对象可以跨chunk存储
+  //那么就必须保证分配出来的chunks在同一个block中
+  //由此也不难理解为什么只有ordered_malloc才能分配数组
 
   const size_type partition_size = alloc_size();
   const size_type total_req_size = n * requested_size;
   const size_type num_chunks = total_req_size / partition_size +
       ((total_req_size % partition_size) ? true : false);
 
+  //由storge的模板参数可知其并不负责向系统申请内存
+  //只负责管理pool申请到的内存
   void * ret = store().malloc_n(num_chunks, partition_size);
+
 
 #ifdef BOOST_POOL_INSTRUMENT
   std::cout << "Allocating " << n << " chunks from pool of size " << partition_size << std::endl;
 #endif
+
+
   if ((ret != 0) || (n == 0))
     return ret;
+
 
 #ifdef BOOST_POOL_INSTRUMENT
   std::cout << "Cache miss, allocating another chunk...\n";
 #endif
-
+  
   // Not enough memory in our storages; make a new storage,
   BOOST_USING_STD_MAX();
   next_size = max BOOST_PREVENT_MACRO_SUBSTITUTION(next_size, num_chunks);
+
+  //chunks加上管理block所需的两个section
   size_type POD_size = static_cast<size_type>(next_size * partition_size +
       integer::static_lcm<sizeof(size_type), sizeof(void *)>::value + sizeof(size_type));
+
+  //从系统申请内存
   char * ptr = (UserAllocator::malloc)(POD_size);
   if (ptr == 0)
   {
@@ -836,6 +938,7 @@ void * pool<UserAllocator>::ordered_malloc(const size_type n)
         // Try again with just enough memory to do the job, or at least whatever we
         // allocated last time:
         next_size >>= 1;
+        //取max(next_size/2,num_chunks)再次尝试，如果还是不行就返回0
         next_size = max BOOST_PREVENT_MACRO_SUBSTITUTION(next_size, num_chunks);
         POD_size = static_cast<size_type>(next_size * partition_size +
             integer::static_lcm<sizeof(size_type), sizeof(void *)>::value + sizeof(size_type));
@@ -844,18 +947,28 @@ void * pool<UserAllocator>::ordered_malloc(const size_type n)
      if(ptr == 0)
        return 0;
   }
+
+  //如果分配到的内容大于一个block怎么办？
+  //后续并没有处理，看来max_size并没有起到作用
+  //object_pool说max_size对每次申请内存设限，但是查看上面的代码可以发现并不是这样
+  //前面的大小检查也只是检查有没有越size_type的界
+
   const details::PODptr<size_type> node(ptr, POD_size);
 
+  //把多分配的存起来
   // Split up block so we can use what wasn't requested.
   if (next_size > num_chunks)
     store().add_ordered_block(node.begin() + num_chunks * partition_size,
         node.element_size() - num_chunks * partition_size, partition_size);
 
+  //如果这次申请没问题，下次就加倍
+  //如果这次申请的是next_size/2，左移重新变为next_size
   BOOST_USING_STD_MIN();
   if(!max_size)
     set_next_size(next_size << 1);
   else if( next_size*partition_size/requested_size < max_size)
     set_next_size(min BOOST_PREVENT_MACRO_SUBSTITUTION(next_size << 1, max_size * requested_size / partition_size));
+
 
   //  insert it into the list,
   //   handle border case.
@@ -921,6 +1034,7 @@ public:
      purge_memory();
   }
 
+  //release是释放没有用过的内存
   bool release_memory()
   {
      bool ret = free_list.empty() ? false : true;
@@ -931,6 +1045,7 @@ public:
      free_list.clear();
      return ret;
   }
+
   bool purge_memory()
   {
      bool ret = free_list.empty() && used_list.empty() ? false : true;
